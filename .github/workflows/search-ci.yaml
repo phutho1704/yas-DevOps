@@ -77,7 +77,10 @@ jobs:
       # ── CD: Build & Push image với tag = commit ID (mọi branch) ──
       - name: Set image tag
         id: tag
-        run: echo "TAG=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+        run: |
+          echo "TAG=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          CLEAN_BRANCH=$(echo "${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}" | sed 's/[^a-zA-Z0-9.-]/_/g')
+          echo "BRANCH=$CLEAN_BRANCH" >> $GITHUB_OUTPUT
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -92,4 +95,4 @@ jobs:
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/yas-search:${{ steps.tag.outputs.TAG }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/yas-search:${{ github.ref == 'refs/heads/main' && 'main' || github.head_ref }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/yas-search:${{ steps.tag.outputs.BRANCH }}
