@@ -2,7 +2,7 @@ name: search service ci
 
 on:
   push:
-    branches: ["main"]
+    branches: [ "**" ]
     paths:
       - "search/**"
       - ".github/workflows/actions/action.yaml"
@@ -74,17 +74,22 @@ jobs:
           min-coverage-changed-files: 60
           title: 'Search Coverage Report'
           update-comment: true
-      - name: Log in to the Container registry
-        if: ${{ github.ref == 'refs/heads/main' }}
+      # ── CD: Build & Push image với tag = commit ID (mọi branch) ──
+      - name: Set image tag
+        id: tag
+        run: echo "TAG=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push Docker images
-        if: ${{ github.ref == 'refs/heads/main' }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image (tag = commit ID)
         uses: docker/build-push-action@v6
         with:
           context: ./search
           push: true
-          tags: ghcr.io/nashtech-garage/yas-search:latest
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/yas-search:${{ steps.tag.outputs.TAG }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/yas-search:${{ github.ref == 'refs/heads/main' && 'main' || github.head_ref }}
