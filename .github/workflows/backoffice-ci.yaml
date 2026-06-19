@@ -39,7 +39,7 @@ jobs:
         continue-on-error: true
         working-directory: backoffice
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: './backoffice'
@@ -77,7 +77,7 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/yas-backoffice:${{ steps.tag.outputs.BRANCH }}
       - name: Run Trivy vulnerability scanner
         if: ${{ github.ref == 'refs/heads/main' }}
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'ghcr.io/nashtech-garage/yas-backoffice:latest'
           format: 'sarif'
