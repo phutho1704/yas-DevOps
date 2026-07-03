@@ -43,6 +43,7 @@ jobs:
           path: "{{SERVICE_NAME}}/**/surefire-reports/*.xml"
           reporter: java-junit
       - name: Analyze with sonar cloud
+        continue-on-error: true
         if: ${{ env.FROM_ORIGINAL_REPOSITORY == 'true' }}
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

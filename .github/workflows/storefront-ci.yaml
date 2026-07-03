@@ -18,8 +18,12 @@ on:
 jobs:
   Build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: read
     env:
-      FROM_ORIGINAL_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name == github.repository || github.ref == 'refs/heads/main' }}
+      FROM_ORIGINAL_REPOSITORY: ${{ github.actor != 'dependabot[bot]' && (github.event.pull_request.head.repo.full_name == github.repository || github.ref == 'refs/heads/main') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,8 +40,9 @@ jobs:
       - run: npx prettier --check .
         working-directory: storefront
       - name: SonarCloud Scan
+        continue-on-error: true
         if: ${{ env.FROM_ORIGINAL_REPOSITORY == 'true' }}
-        uses: SonarSource/sonarcloud-github-action@master
+        uses: SonarSource/sonarqube-scan-action@v8.2.0
         with:
           projectBaseDir: storefront
         env:

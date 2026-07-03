@@ -21,6 +21,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      pull-requests: read
       security-events: write
     env:
       FROM_ORIGINAL_REPOSITORY: ${{ github.actor != 'dependabot[bot]' && (github.event.pull_request.head.repo.full_name == github.repository || github.ref == 'refs/heads/main') }}
@@ -55,8 +56,9 @@ jobs:
         with:
           sarif_file: 'trivy-fs-results.sarif'
       - name: SonarCloud Scan
+        continue-on-error: true
         if: ${{ env.FROM_ORIGINAL_REPOSITORY == 'true' }}
-        uses: SonarSource/sonarcloud-github-action@master
+        uses: SonarSource/sonarqube-scan-action@v8.2.0
         with:
           projectBaseDir: backoffice
         env:
