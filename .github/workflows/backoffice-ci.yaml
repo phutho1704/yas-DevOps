@@ -52,9 +52,10 @@ jobs:
           output: 'trivy-fs-results.sarif'
       - name: Upload Trivy filesystem scan results to GitHub Security tab
         if: ${{ env.FROM_ORIGINAL_REPOSITORY == 'true' }}
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-fs-results.sarif'
+          category: trivy-fs
       - name: SonarCloud Scan
         continue-on-error: true
         if: ${{ env.FROM_ORIGINAL_REPOSITORY == 'true' }}
@@ -93,6 +94,7 @@ jobs:
           tags: ghcr.io/${{ github.repository_owner }}/yas-backoffice:latest
       - name: Upload Trivy image scan results to GitHub Security tab
         if: ${{ github.ref == 'refs/heads/main' }}
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-image-results.sarif'
+          category: trivy-image
