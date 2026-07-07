@@ -95,4 +95,4 @@ jobs:
         with:
           context: ./media
           push: true
-          tags: ghcr.io/nashtech-garage/yas-media:latest
+          tags: ghcr.io/${{ github.repository_owner }}/yas-media:latest

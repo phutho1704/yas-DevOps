@@ -95,4 +95,4 @@ jobs:
         with:
           context: ./payment
           push: true
-          tags: ghcr.io/nashtech-garage/yas-payment:latest
+          tags: ghcr.io/${{ github.repository_owner }}/yas-payment:latest

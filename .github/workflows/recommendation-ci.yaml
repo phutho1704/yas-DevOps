@@ -95,4 +95,4 @@ jobs:
         with:
           context: ./recommendation
           push: true
-          tags: ghcr.io/nashtech-garage/yas-recommendation:latest
+          tags: ghcr.io/${{ github.repository_owner }}/yas-recommendation:latest
