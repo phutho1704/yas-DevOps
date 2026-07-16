@@ -155,12 +155,12 @@ pipeline {
             steps {
                 withSonarQubeEnv("${SONARQUBE_ENV}") {
                     sh """
-		            mvn compile -DskipTests
+                    mvn -B -DskipTests=false verify jacoco:report
 
-                    mvn sonar:sonar \
+                    mvn -B sonar:sonar \
                     -Dsonar.projectKey=yas-project \
                     -Dsonar.coverage.jacoco.xmlReportPaths=**/target/site/jacoco/jacoco.xml \
-                    -DskipTests
+                    -DskipTests=false
                     """
                 }
             }
@@ -223,9 +223,10 @@ def processModule(String moduleName) {
             find . -name "logback.xml" -delete
             find . -name "logback-spring.xml" -delete
 
-            mvn clean verify jacoco:report \
+            mvn -B clean verify jacoco:report \
             -pl ${moduleName} -am \
-            -DtrimStackTrace=true
+            -DtrimStackTrace=true \
+            -DskipTests=false
             """
 
             // Publish test results
@@ -233,7 +234,7 @@ def processModule(String moduleName) {
                   testResults: "**/target/surefire-reports/*.xml, **/target/failsafe-reports/*.xml"
 
             recordCoverage(
-                tools: [[parser: 'JACOCO', pattern: "${moduleName}/target/site/jacoco/jacoco.xml"]],
+                tools: [[parser: 'JACOCO', pattern: '**/target/site/jacoco/jacoco.xml']],
                 qualityGates: [
                     [threshold: 70.0, metric: 'LINE', baseline: 'PROJECT', criticality: 'FAILURE']
                 ]
