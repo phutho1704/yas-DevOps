@@ -1,18 +1,20 @@
 credentials:
+  # These values are placeholders and should be supplied via Helm values,
+  # CI/CD secrets, or an external secrets manager for non-local environments.
   postgresql:
     username: yasadminuser
-    password: admin
+    password: change-me
   elasticsearch:
     username: yas
-    password: LarUmB3A49NTg9YmgW4=
+    password: change-me
   keycloak:
-    backofficeBffClientSecret: TVacLC0cQ8tiiEKiTVerTb2YvwQ1TRJF
-    storefrontBffClientSecret: ZrU9I0q2uXBglBnmvyJdkl1lf0ncr8tn
-    customerManagementClientSecret: NKAr3rnjwm9jlakgKpelukZGFaHYqIWE
+    backofficeBffClientSecret: change-me
+    storefrontBffClientSecret: change-me
+    customerManagementClientSecret: change-me
   redis:
-    password: redis
+    password: change-me
   openai:
-    apiKey: update-me
+    apiKey: change-me
 
 #Genneral application.yaml for all microservice
 applicationConfig:

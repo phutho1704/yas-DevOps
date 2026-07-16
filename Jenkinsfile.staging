@@ -1,0 +1,151 @@
+pipeline {
+    agent any
+
+    tools {
+        jdk 'JDK21'
+        maven 'Maven3.9'
+    }
+
+    environment {
+        DOCKER_HUB_CRED = 'dockerhub-credentials'
+        DOCKER_ORG = 'phutho1704' // Change to your Docker Hub username
+        TARGET_NAMESPACE = 'staging'
+        DOMAIN = 'yas-staging.local.com'
+    }
+
+    stages {
+        stage('Extract Release Tag') {
+            steps {
+                script {
+                    // Extract the git tag that triggered this build
+                    // If triggered by tag push, GitSCM will populate env.BRANCH_NAME as tag or we can extract it
+                    def gitTag = sh(script: "git describe --tags --exact-match || git rev-parse --abbrev-ref HEAD || echo ''", returnStdout: true).trim()
+                    
+                    if (gitTag && gitTag.startsWith("v")) {
+                        env.RELEASE_TAG = gitTag
+                        echo "Processing Release Tag: ${env.RELEASE_TAG}"
+                    } else {
+                        // Fallback/Safety Check: search in environment variables or fail
+                        error "This job must be triggered by a Git Tag push starting with 'v' (e.g. v1.2.3). Current ref is: ${gitTag}"
+                    }
+                }
+            }
+        }
+
+        stage('Maven Package') {
+            steps {
+                // Build all jars
+                sh 'mvn clean package -DskipTests'
+            }
+        }
+
+        stage('Build & Push Release Images') {
+            steps {
+                script {
+                    def services = [
+                        "cart", "customer", "inventory", "location", "media", 
+                        "order", "payment", "payment-paypal", "product", 
+                        "promotion", "rating", "search", "tax", "recommendation", 
+                        "webhook", "sampledata", "backoffice-bff", "storefront-bff",
+                        "backoffice", "storefront"
+                    ]
+
+                    withCredentials([usernamePassword(credentialsId: env.DOCKER_HUB_CRED, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh "echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin"
+
+                        for (service in services) {
+                            if (fileExists("${service}/Dockerfile")) {
+                                echo "Building release image for ${service} (Tag: ${env.RELEASE_TAG})..."
+                                def imageTag = "${env.DOCKER_ORG}/yas-${service}:${env.RELEASE_TAG}"
+                                sh "docker build -t ${imageTag} -f ${service}/Dockerfile ${service}"
+                                sh "docker push ${imageTag}"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Staging') {
+            steps {
+                script {
+                    def ns = env.TARGET_NAMESPACE
+                    def tag = env.RELEASE_TAG
+                    def domain = env.DOMAIN
+
+                    // Deploy configuration
+                    sh "helm dependency build k8s/charts/yas-configuration || true"
+                    sh "helm upgrade --install yas-configuration k8s/charts/yas-configuration --namespace ${ns} --create-namespace"
+
+                    // Deploy BFFs
+                    sh """
+                    helm dependency build k8s/charts/backoffice-bff || true
+                    helm upgrade --install backoffice-bff k8s/charts/backoffice-bff \
+                        --namespace ${ns} \
+                        --set backend.ingress.host="backoffice.${domain}" \
+                        --set backend.image.repository="${env.DOCKER_ORG}/yas-backoffice-bff" \
+                        --set backend.image.tag="${tag}"
+                    """
+
+                    sh """
+                    helm dependency build k8s/charts/storefront-bff || true
+                    helm upgrade --install storefront-bff k8s/charts/storefront-bff \
+                        --namespace ${ns} \
+                        --set backend.ingress.host="storefront.${domain}" \
+                        --set backend.image.repository="${env.DOCKER_ORG}/yas-storefront-bff" \
+                        --set backend.image.tag="${tag}"
+                    """
+
+                    // Deploy UIs
+                    sh """
+                    helm dependency build k8s/charts/backoffice-ui || true
+                    helm upgrade --install backoffice-ui k8s/charts/backoffice-ui \
+                        --namespace ${ns} \
+                        --set backend.image.repository="${env.DOCKER_ORG}/yas-backoffice" \
+                        --set backend.image.tag="${tag}"
+                    """
+
+                    sh """
+                    helm dependency build k8s/charts/storefront-ui || true
+                    helm upgrade --install storefront-ui k8s/charts/storefront-ui \
+                        --namespace ${ns} \
+                        --set backend.image.repository="${env.DOCKER_ORG}/yas-storefront" \
+                        --set backend.image.tag="${tag}"
+                    """
+
+                    // Deploy Swagger UI
+                    sh """
+                    helm upgrade --install swagger-ui k8s/charts/swagger-ui \
+                        --namespace ${ns} \
+                        --set ingress.host="api.${domain}"
+                    """
+
+                    // Backend services to deploy in loop
+                    def backendServices = [
+                        "cart", "customer", "inventory", "location", "media", 
+                        "order", "payment", "payment-paypal", "product", 
+                        "promotion", "rating", "search", "tax", "recommendation", 
+                        "webhook", "sampledata"
+                    ]
+
+                    for (service in backendServices) {
+                        echo "Deploying backend service ${service} to staging (Tag: ${tag})"
+                        sh "helm dependency build k8s/charts/${service} || true"
+                        sh """
+                        helm upgrade --install ${service} k8s/charts/${service} \
+                            --namespace ${ns} \
+                            --set backend.image.repository="${env.DOCKER_ORG}/yas-${service}" \
+                            --set backend.image.tag="${tag}" \
+                            --set backend.ingress.host="api.${domain}"
+                        """
+                    }
+                }
+            }
+        }
+    }
+    post {
+        success {
+            echo "Successfully deployed release tag ${env.RELEASE_TAG} to Staging environment!"
+        }
+    }
+}

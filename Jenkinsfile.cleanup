@@ -1,0 +1,52 @@
+properties([
+    parameters([
+        string(name: 'TARGET_NAMESPACE', defaultValue: 'yas-dev', description: 'Namespace of the developer environment to clean up')
+    ])
+])
+
+pipeline {
+    agent any
+
+    stages {
+        stage('Helm Uninstall Releases') {
+            steps {
+                script {
+                    def ns = params.TARGET_NAMESPACE
+                    echo "Uninstalling all Helm releases in namespace: ${ns}..."
+                    
+                    // List of all deployed releases
+                    def releases = [
+                        "backoffice-ui", "backoffice-bff", 
+                        "storefront-ui", "storefront-bff", 
+                        "swagger-ui", "cart", "customer", 
+                        "inventory", "location", "media", 
+                        "order", "payment", "payment-paypal", 
+                        "product", "promotion", "rating", 
+                        "search", "tax", "recommendation", 
+                        "webhook", "sampledata", "yas-configuration"
+                    ]
+
+                    for (release in releases) {
+                        echo "Uninstalling Helm release: ${release}"
+                        sh "helm uninstall ${release} --namespace ${ns} || true"
+                    }
+                }
+            }
+        }
+
+        stage('Delete Kubernetes Namespace') {
+            steps {
+                script {
+                    def ns = params.TARGET_NAMESPACE
+                    echo "Deleting namespace ${ns}..."
+                    sh "kubectl delete namespace ${ns} --ignore-not-found=true"
+                }
+            }
+        }
+    }
+    post {
+        success {
+            echo "Successfully cleaned up all deployment resources for namespace: ${params.TARGET_NAMESPACE}"
+        }
+    }
+}

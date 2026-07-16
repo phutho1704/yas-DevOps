@@ -1,0 +1,198 @@
+pipeline {
+    agent any
+
+    tools {
+        jdk 'JDK21'
+        maven 'Maven3.9'
+    }
+
+    environment {
+        DOCKER_HUB_CRED = 'dockerhub-credentials'
+        DOCKER_ORG = 'phutho1704' // Change to your Docker Hub username
+    }
+
+    stages {
+        stage('Checkout & Metadata') {
+            steps {
+                checkout scm
+                script {
+                    // Extract short commit SHA
+                    env.COMMIT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    env.BRANCH_NAME = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    echo "Branch: ${env.BRANCH_NAME} | Commit SHA: ${env.COMMIT_SHA}"
+                    
+                    // Check if common libraries or configurations changed
+                    def commonChanged = sh(script: "git diff --name-only HEAD~1 HEAD | grep -E '^(common-library/|pom.xml|k8s/|docker/)' || true", returnStdout: true).trim()
+                    if (commonChanged) {
+                        env.BUILD_ALL = 'true'
+                        echo "Common dependencies or root configs changed. Forcing rebuild of all modules."
+                    } else {
+                        env.BUILD_ALL = 'false'
+                    }
+                }
+            }
+        }
+
+        stage('Parallel Build & Push') {
+            parallel {
+                stage('Product Service') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^product/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildJavaModule('product') }
+                }
+                stage('Tax Service') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^tax/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildJavaModule('tax') }
+                }
+                stage('Cart Service') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^cart/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildJavaModule('cart') }
+                }
+                stage('Customer Service') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^customer/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildJavaModule('customer') }
+                }
+                stage('Order Service') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^order/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildJavaModule('order') }
+                }
+                stage('Inventory Service') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^inventory/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildJavaModule('inventory') }
+                }
+                stage('Media Service') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^media/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildJavaModule('media') }
+                }
+                stage('Location Service') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^location/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildJavaModule('location') }
+                }
+                stage('Payment Service') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^payment/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildJavaModule('payment') }
+                }
+                stage('Payment-Paypal Service') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^payment-paypal/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildJavaModule('payment-paypal') }
+                }
+                stage('Rating Service') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^rating/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildJavaModule('rating') }
+                }
+                stage('Search Service') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^search/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildJavaModule('search') }
+                }
+                stage('Recommendation Service') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^recommendation/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildJavaModule('recommendation') }
+                }
+                stage('Webhook Service') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^webhook/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildJavaModule('webhook') }
+                }
+                stage('Sampledata Service') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^sampledata/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildJavaModule('sampledata') }
+                }
+                stage('Backoffice-BFF') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^backoffice-bff/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildJavaModule('backoffice-bff') }
+                }
+                stage('Storefront-BFF') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^storefront-bff/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildJavaModule('storefront-bff') }
+                }
+                stage('Backoffice UI') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^backoffice/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildUiModule('backoffice') }
+                }
+                stage('Storefront UI') {
+                    when {
+                        expression { env.BUILD_ALL == 'true' || sh(script: "git diff --name-only HEAD~1 HEAD | grep '^storefront/' || true", returnStdout: true).trim() != "" }
+                    }
+                    steps { buildUiModule('storefront') }
+                }
+            }
+        }
+    }
+}
+
+def buildJavaModule(String moduleName) {
+    script {
+        echo "Building Java Module: ${moduleName}"
+        // Compile and package the jar file for the specific module and its dependencies
+        sh "mvn clean package -DskipTests -pl ${moduleName} -am"
+        
+        // Login and push to Docker Hub
+        withCredentials([usernamePassword(credentialsId: env.DOCKER_HUB_CRED, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+            sh "echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin"
+            
+            def imageTag = "${env.DOCKER_ORG}/yas-${moduleName}:${env.COMMIT_SHA}"
+            sh "docker build -t ${imageTag} -f ${moduleName}/Dockerfile ${moduleName}"
+            sh "docker push ${imageTag}"
+            
+            // Push latest tag if we are on main branch
+            if (env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'origin/main') {
+                sh "docker tag ${imageTag} ${env.DOCKER_ORG}/yas-${moduleName}:latest"
+                sh "docker push ${env.DOCKER_ORG}/yas-${moduleName}:latest"
+            }
+        }
+    }
+}
+
+def buildUiModule(String moduleName) {
+    script {
+        echo "Building UI Module: ${moduleName}"
+        // UI modules build straight in Docker multi-stage builds, so no local build required
+        withCredentials([usernamePassword(credentialsId: env.DOCKER_HUB_CRED, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+            sh "echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin"
+            
+            def imageTag = "${env.DOCKER_ORG}/yas-${moduleName}:${env.COMMIT_SHA}"
+            sh "docker build -t ${imageTag} -f ${moduleName}/Dockerfile ${moduleName}"
+            sh "docker push ${imageTag}"
+            
+            // Push latest tag if we are on main branch
+            if (env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'origin/main') {
+                sh "docker tag ${imageTag} ${env.DOCKER_ORG}/yas-${moduleName}:latest"
+                sh "docker push ${env.DOCKER_ORG}/yas-${moduleName}:latest"
+            }
+        }
+    }
+}

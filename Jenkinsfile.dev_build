@@ -1,0 +1,233 @@
+properties([
+    parameters([
+        string(name: 'GIT_REPO_URL', defaultValue: 'https://github.com/phutho1704/yas-DevOps.git', description: 'Git Repository URL to resolve branches from'),
+        string(name: 'TARGET_NAMESPACE', defaultValue: 'yas-dev', description: 'Kubernetes Namespace to deploy this dev environment'),
+        string(name: 'DOMAIN_NAME', defaultValue: 'yas-dev.local.com', description: 'Base domain name for Ingress hosts'),
+        // Microservice branch parameters
+        string(name: 'BRANCH_PRODUCT', defaultValue: 'main', description: 'Branch for product-service'),
+        string(name: 'BRANCH_TAX', defaultValue: 'main', description: 'Branch for tax-service'),
+        string(name: 'BRANCH_CART', defaultValue: 'main', description: 'Branch for cart-service'),
+        string(name: 'BRANCH_CUSTOMER', defaultValue: 'main', description: 'Branch for customer-service'),
+        string(name: 'BRANCH_ORDER', defaultValue: 'main', description: 'Branch for order-service'),
+        string(name: 'BRANCH_INVENTORY', defaultValue: 'main', description: 'Branch for inventory-service'),
+        string(name: 'BRANCH_MEDIA', defaultValue: 'main', description: 'Branch for media-service'),
+        string(name: 'BRANCH_LOCATION', defaultValue: 'main', description: 'Branch for location-service'),
+        string(name: 'BRANCH_PAYMENT', defaultValue: 'main', description: 'Branch for payment-service'),
+        string(name: 'BRANCH_PAYMENT_PAYPAL', defaultValue: 'main', description: 'Branch for payment-paypal-service'),
+        string(name: 'BRANCH_RATING', defaultValue: 'main', description: 'Branch for rating-service'),
+        string(name: 'BRANCH_SEARCH', defaultValue: 'main', description: 'Branch for search-service'),
+        string(name: 'BRANCH_RECOMMENDATION', defaultValue: 'main', description: 'Branch for recommendation-service'),
+        string(name: 'BRANCH_WEBHOOK', defaultValue: 'main', description: 'Branch for webhook-service'),
+        string(name: 'BRANCH_SAMPLEDATA', defaultValue: 'main', description: 'Branch for sampledata-service'),
+        string(name: 'BRANCH_BACKOFFICE_BFF', defaultValue: 'main', description: 'Branch for backoffice-bff'),
+        string(name: 'BRANCH_STOREFRONT_BFF', defaultValue: 'main', description: 'Branch for storefront-bff'),
+        string(name: 'BRANCH_BACKOFFICE_UI', defaultValue: 'main', description: 'Branch for backoffice-ui'),
+        string(name: 'BRANCH_STOREFRONT_UI', defaultValue: 'main', description: 'Branch for storefront-ui')
+    ])
+])
+
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_ORG = 'phutho1704' // Change to your Docker Hub username
+    }
+
+    stages {
+        stage('Resolve Remote Branch Commit SHAs') {
+            steps {
+                script {
+                    def branchesMap = [
+                        "product": params.BRANCH_PRODUCT,
+                        "tax": params.BRANCH_TAX,
+                        "cart": params.BRANCH_CART,
+                        "customer": params.BRANCH_CUSTOMER,
+                        "order": params.BRANCH_ORDER,
+                        "inventory": params.BRANCH_INVENTORY,
+                        "media": params.BRANCH_MEDIA,
+                        "location": params.BRANCH_LOCATION,
+                        "payment": params.BRANCH_PAYMENT,
+                        "payment-paypal": params.BRANCH_PAYMENT_PAYPAL,
+                        "rating": params.BRANCH_RATING,
+                        "search": params.BRANCH_SEARCH,
+                        "recommendation": params.BRANCH_RECOMMENDATION,
+                        "webhook": params.BRANCH_WEBHOOK,
+                        "sampledata": params.BRANCH_SAMPLEDATA,
+                        "backoffice-bff": params.BRANCH_BACKOFFICE_BFF,
+                        "storefront-bff": params.BRANCH_STOREFRONT_BFF,
+                        "backoffice": params.BRANCH_BACKOFFICE_UI,
+                        "storefront": params.BRANCH_STOREFRONT_UI
+                    ]
+
+                    def resolvedMap = [:]
+
+                    branchesMap.each { service, branchName ->
+                        echo "Resolving tag for ${service} (Branch: ${branchName})..."
+                        
+                        if (branchName == 'main' || branchName == 'latest' || branchName == '') {
+                            resolvedMap[service] = "latest"
+                        } else {
+                            try {
+                                // Run git ls-remote to find the commit SHA of the remote branch
+                                def commitSha = sh(
+                                    script: "git ls-remote ${params.GIT_REPO_URL} refs/heads/${branchName} | cut -f 1",
+                                    returnStdout: true
+                                ).trim()
+                                
+                                if (!commitSha) {
+                                    error "Branch '${branchName}' not found on remote repository!"
+                                }
+                                
+                                def shortSha = commitSha.substring(0, 7)
+                                resolvedMap[service] = shortSha
+                                echo "Resolved ${service} branch '${branchName}' to Commit SHA: ${shortSha}"
+                            } catch (Exception e) {
+                                echo "Warning: Failed to resolve branch '${branchName}' for ${service}. Error: ${e.message}. Using 'latest'."
+                                resolvedMap[service] = "latest"
+                            }
+                        }
+                    }
+
+                    // Write resolved tags mapping to JSON
+                    writeJSON file: 'resolved_tags.json', json: resolvedMap
+                    sh "cat resolved_tags.json"
+                }
+            }
+        }
+
+        stage('Deploy Configuration') {
+            steps {
+                script {
+                    def ns = params.TARGET_NAMESPACE
+                    sh "helm dependency build k8s/charts/yas-configuration || true"
+                    sh "helm upgrade --install yas-configuration k8s/charts/yas-configuration --namespace ${ns} --create-namespace"
+                }
+            }
+        }
+
+        stage('Deploy UIs and BFFs') {
+            steps {
+                script {
+                    def resolvedMap = readJSON file: 'resolved_tags.json'
+                    def ns = params.TARGET_NAMESPACE
+                    def domain = params.DOMAIN_NAME
+
+                    // Deploy BFFs
+                    sh """
+                    helm dependency build k8s/charts/backoffice-bff || true
+                    helm upgrade --install backoffice-bff k8s/charts/backoffice-bff \
+                        --namespace ${ns} \
+                        --set backend.ingress.host="backoffice.${domain}" \
+                        --set backend.image.repository="${env.DOCKER_ORG}/yas-backoffice-bff" \
+                        --set backend.image.tag="${resolvedMap['backoffice-bff']}"
+                    """
+
+                    sh """
+                    helm dependency build k8s/charts/storefront-bff || true
+                    helm upgrade --install storefront-bff k8s/charts/storefront-bff \
+                        --namespace ${ns} \
+                        --set backend.ingress.host="storefront.${domain}" \
+                        --set backend.image.repository="${env.DOCKER_ORG}/yas-storefront-bff" \
+                        --set backend.image.tag="${resolvedMap['storefront-bff']}"
+                    """
+
+                    // Deploy UIs
+                    sh """
+                    helm dependency build k8s/charts/backoffice-ui || true
+                    helm upgrade --install backoffice-ui k8s/charts/backoffice-ui \
+                        --namespace ${ns} \
+                        --set backend.image.repository="${env.DOCKER_ORG}/yas-backoffice" \
+                        --set backend.image.tag="${resolvedMap['backoffice']}"
+                    """
+
+                    sh """
+                    helm dependency build k8s/charts/storefront-ui || true
+                    helm upgrade --install storefront-ui k8s/charts/storefront-ui \
+                        --namespace ${ns} \
+                        --set backend.image.repository="${env.DOCKER_ORG}/yas-storefront" \
+                        --set backend.image.tag="${resolvedMap['storefront']}"
+                    """
+
+                    // Deploy Swagger UI
+                    sh """
+                    helm upgrade --install swagger-ui k8s/charts/swagger-ui \
+                        --namespace ${ns} \
+                        --set ingress.host="api.${domain}"
+                    """
+                }
+            }
+        }
+
+        stage('Deploy Backend Microservices') {
+            steps {
+                script {
+                    def resolvedMap = readJSON file: 'resolved_tags.json'
+                    def ns = params.TARGET_NAMESPACE
+                    def domain = params.DOMAIN_NAME
+                    
+                    // Backend services to deploy in loop
+                    def backendServices = [
+                        "cart", "customer", "inventory", "location", "media", 
+                        "order", "payment", "payment-paypal", "product", 
+                        "promotion", "rating", "search", "tax", "recommendation", 
+                        "webhook", "sampledata"
+                    ]
+
+                    for (service in backendServices) {
+                        def tag = resolvedMap[service]
+                        echo "Deploying backend service: ${service} with Image Tag: ${tag}"
+                        
+                        sh "helm dependency build k8s/charts/${service} || true"
+                        sh """
+                        helm upgrade --install ${service} k8s/charts/${service} \
+                            --namespace ${ns} \
+                            --set backend.image.repository="${env.DOCKER_ORG}/yas-${service}" \
+                            --set backend.image.tag="${tag}" \
+                            --set backend.ingress.host="api.${domain}"
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Publish Service Links & Cleanup Hyperlink') {
+            steps {
+                script {
+                    def ns = params.TARGET_NAMESPACE
+                    def domain = params.DOMAIN_NAME
+                    // Hyperlink to trigger the cleanup job, passing the namespace as parameter
+                    def cleanupUrl = "${env.JENKINS_URL}job/developer_cleanup/buildWithParameters?delay=0sec&TARGET_NAMESPACE=${ns}"
+                    
+                    currentBuild.description = """
+                    <h3>🚀 Deployment Complete for Namespace: <span style='color:#007bff;'>${ns}</span></h3>
+                    <table border='1' cellpadding='8' style='border-collapse:collapse; border-color:#ddd; width:100%; max-width:600px;'>
+                      <tr style='background:#f8f9fa;'>
+                        <th>Service</th>
+                        <th>URL Address (NodePort: 30080)</th>
+                      </tr>
+                      <tr>
+                        <td><b>Storefront UI</b></td>
+                        <td><a href='http://storefront.${domain}:30080' target='_blank'>http://storefront.${domain}:30080</a></td>
+                      </tr>
+                      <tr>
+                        <td><b>Backoffice UI</b></td>
+                        <td><a href='http://backoffice.${domain}:30080' target='_blank'>http://backoffice.${domain}:30080</a></td>
+                      </tr>
+                      <tr>
+                        <td><b>Swagger API Docs</b></td>
+                        <td><a href='http://api.${domain}:30080/swagger-ui/' target='_blank'>http://api.${domain}:30080/swagger-ui/</a></td>
+                      </tr>
+                    </table>
+                    <p style='background-color:#fff3cd; color:#856404; border:1px solid #ffeeba; padding:12px; margin-top:15px; border-radius:4px; max-width:600px;'>
+                      💡 <b>WSL / Windows Routing Reminder:</b> Make sure you point the hosts file of your Windows browser machine to your WSL2/Minikube IP address!
+                    </p>
+                    <p style='margin-top:20px;'>
+                      🗑️ <b>Finished testing?</b> Destroy resources safely by clicking below:<br>
+                      <a href='${cleanupUrl}' style='display:inline-block; margin-top:8px; padding:10px 20px; background:#dc3545; color:white; text-decoration:none; border-radius:4px; font-weight:bold; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>[🗑️ REMOVE DEPLOYMENT]</a>
+                    </p>
+                    """
+                }
+            }
+        }
+    }
+}

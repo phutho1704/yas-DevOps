@@ -629,7 +629,7 @@ spec:
         enabled: true
         alwaysDisplayInConsole: false
         clientAuthenticatorType: client-secret
-        secret: NKAr3rnjwm9jlakgKpelukZGFaHYqIWE
+        secret: change-me
         redirectUris:
           - ''
         webOrigins: [ ]
@@ -818,7 +818,7 @@ spec:
         enabled: true
         alwaysDisplayInConsole: false
         clientAuthenticatorType: client-secret
-        secret: ZrU9I0q2uXBglBnmvyJdkl1lf0ncr8tn
+        secret: change-me
         redirectUris:
           - {{ .Values.storefrontRedirectUrl }}/*
           - http://localhost:8087/*
