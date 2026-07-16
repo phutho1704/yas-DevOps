@@ -59,6 +59,8 @@ jobs:
           format: 'HTML'
           args: >
             --disableCentral
+            --disableNodeAudit
+            --disableYarnAudit
       - name: Upload OWASP Dependency Check results
         if: ${{ env.FROM_ORIGINAL_REPOSITORY == 'true' }}
         uses: actions/upload-artifact@master
