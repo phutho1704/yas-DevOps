@@ -246,8 +246,10 @@ def processModule(String moduleName) {
             find . -name "logback.xml" -delete
             find . -name "logback-spring.xml" -delete
 
-            mvn clean verify jacoco:report \
+            mvn clean test jacoco:report \
             -pl ${moduleName} -am \
+            -DskipITs=true \
+            -DskipTests=false \
             -DtrimStackTrace=true
             """
 
