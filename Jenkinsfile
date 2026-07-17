@@ -1,14 +1,12 @@
-def sanitizeBranchName(String branchName) {
+def normalizeBranchName(String branchName) {
     if (!branchName) {
-        return 'local'
+        return 'main'
     }
 
     return branchName
         .replaceFirst(/^refs\/heads\//, '')
         .replaceFirst(/^origin\//, '')
         .trim()
-        .replaceAll(/[^A-Za-z0-9._-]/, '-')
-        .toLowerCase()
 }
 
 pipeline {
@@ -33,10 +31,9 @@ pipeline {
             steps {
                 script {
                     def rawBranchName = env.CHANGE_BRANCH ?: env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'main'
-                    def branchName = rawBranchName.replaceFirst(/^refs\/heads\//, '').replaceFirst(/^origin\//, '')
-                    def safeBranchName = sanitizeBranchName(branchName)
+                    def branchName = normalizeBranchName(rawBranchName)
 
-                    env.BRANCH_NAME_SAFE = safeBranchName
+                    env.BRANCH_NAME_SAFE = branchName
                     echo "Checking out branch: ${branchName}"
 
                     checkout([
@@ -174,7 +171,7 @@ pipeline {
 
                     mvn sonar:sonar \
                     -Dsonar.projectKey=yas-project \
-                    -Dsonar.branch.name=${env.BRANCH_NAME_SAFE} \
+                    -Dsonar.branch.name="${env.BRANCH_NAME_SAFE}" \
                     -Dsonar.coverage.jacoco.xmlReportPaths=**/target/site/jacoco/jacoco.xml \
                     -DskipTests
                     """
@@ -243,16 +240,29 @@ def processModule(String moduleName) {
             -DtrimStackTrace=true
             """
 
+            def coverageReport = sh(
+                script: "find . -path '*/target/site/jacoco/jacoco.xml' | head -n 1",
+                returnStdout: true
+            ).trim()
+
+            if (coverageReport) {
+                echo "Found JaCoCo report: ${coverageReport}"
+            } else {
+                echo "No JaCoCo report found; coverage will not be published"
+            }
+
             // Publish test results
             junit allowEmptyResults: true,
                   testResults: "**/target/surefire-reports/*.xml, **/target/failsafe-reports/*.xml"
 
-            recordCoverage(
-                tools: [[parser: 'JACOCO', pattern: "${moduleName}/target/site/jacoco/jacoco.xml"]],
-                qualityGates: [
-                    [threshold: 70.0, metric: 'LINE', baseline: 'PROJECT', criticality: 'FAILURE']
-                ]
-            )
+            if (coverageReport) {
+                recordCoverage(
+                    tools: [[parser: 'JACOCO', pattern: coverageReport]],
+                    qualityGates: [
+                        [threshold: 70.0, metric: 'LINE', baseline: 'PROJECT', criticality: 'FAILURE']
+                    ]
+                )
+            }
         }
     }
 }
