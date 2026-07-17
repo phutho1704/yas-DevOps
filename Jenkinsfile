@@ -14,6 +14,9 @@ def normalizeBranchName(String branchName) {
 // instead of Jenkins' built-in changeset/changelog (which can be empty when
 // using a custom `checkout([$class: 'GitSCM', ...])` step).
 def moduleChanged(String moduleName) {
+    if (env.FORCE_ALL_MODULES == 'true') {
+        return true
+    }
     def changed = (env.CHANGED_FILES ?: '').split('\n')
     return changed.any { it.trim().startsWith("${moduleName}/") }
 }
@@ -24,6 +27,14 @@ def anyModuleChanged(List<String> modules) {
 
 pipeline {
     agent any
+
+    parameters {
+        booleanParam(
+            name: 'FORCE_ALL_MODULES',
+            defaultValue: false,
+            description: 'Force every module stage (Product, Media, Cart, ...) to run regardless of changed files. Useful for testing the pipeline itself (e.g. verifying coverage reporting) without touching business code.'
+        )
+    }
 
     tools {
         jdk 'JDK21'
