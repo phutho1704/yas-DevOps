@@ -183,42 +183,20 @@ pipeline {
         // ========================
         stage('SonarQube Analysis') {
             when {
-                expression {
-                    def changed = anyModuleChanged(env.ALL_MODULES.split(',') as List)
-                    def sonarEnabled = !((env.SKIP_SONAR ?: 'false').toBoolean()) &&
-                        ((env.SONAR_HOST_URL ?: '').trim()) &&
-                        ((env.SONAR_TOKEN ?: '').trim())
-                    return changed && sonarEnabled
-                }
+                expression { anyModuleChanged(env.ALL_MODULES.split(',') as List) }
             }
             steps {
-                sh """
-                echo "Running SonarQube analysis against ${env.SONAR_HOST_URL}"
-                mvn compile -DskipTests
+                withSonarQubeEnv("${SONARQUBE_ENV}") {
+                    sh """
+		            mvn compile -DskipTests
 
-                mvn sonar:sonar \
-                -Dsonar.projectKey=yas-project \
-                -Dsonar.branch.name="${env.BRANCH_NAME_SAFE}" \
-                -Dsonar.coverage.jacoco.xmlReportPaths=**/target/site/jacoco/jacoco.xml \
-                -Dsonar.host.url="${env.SONAR_HOST_URL}" \
-                -Dsonar.token="${env.SONAR_TOKEN}" \
-                -DskipTests
-                """
-            }
-        }
-
-        stage('SonarQube Analysis Skipped') {
-            when {
-                expression {
-                    def changed = anyModuleChanged(env.ALL_MODULES.split(',') as List)
-                    def sonarSkipped = ((env.SKIP_SONAR ?: 'false').toBoolean()) ||
-                        !((env.SONAR_HOST_URL ?: '').trim()) ||
-                        !((env.SONAR_TOKEN ?: '').trim())
-                    return changed && sonarSkipped
+                    mvn sonar:sonar \
+                    -Dsonar.projectKey=yas-project \
+                    -Dsonar.branch.name="${env.BRANCH_NAME_SAFE}" \
+                    -Dsonar.coverage.jacoco.xmlReportPaths=**/target/site/jacoco/jacoco.xml \
+                    -DskipTests
+                    """
                 }
-            }
-            steps {
-                echo 'SonarQube skipped because SONAR_HOST_URL/SONAR_TOKEN are not configured.'
             }
         }
 
@@ -227,13 +205,7 @@ pipeline {
         // ========================
         stage('Quality Gate') {
             when {
-                expression {
-                    def changed = anyModuleChanged(env.ALL_MODULES.split(',') as List)
-                    def sonarEnabled = !((env.SKIP_SONAR ?: 'false').toBoolean()) &&
-                        ((env.SONAR_HOST_URL ?: '').trim()) &&
-                        ((env.SONAR_TOKEN ?: '').trim())
-                    return changed && sonarEnabled
-                }
+                expression { anyModuleChanged(env.ALL_MODULES.split(',') as List) }
             }
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
@@ -274,15 +246,13 @@ def processModule(String moduleName) {
             find . -name "logback.xml" -delete
             find . -name "logback-spring.xml" -delete
 
-            mvn clean test jacoco:report \
+            mvn clean verify jacoco:report \
             -pl ${moduleName} -am \
-            -DskipITs=true \
-            -DskipTests=false \
             -DtrimStackTrace=true
             """
 
             def coverageReport = sh(
-                script: "find . -path '*/target/site/jacoco/jacoco.xml' | head -n 1",
+                script: "find ./${moduleName} -path '*/target/site/jacoco/jacoco.xml' | head -n 1",
                 returnStdout: true
             ).trim()
 
