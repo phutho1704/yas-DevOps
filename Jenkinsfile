@@ -183,20 +183,42 @@ pipeline {
         // ========================
         stage('SonarQube Analysis') {
             when {
-                expression { anyModuleChanged(env.ALL_MODULES.split(',') as List) }
+                expression {
+                    def changed = anyModuleChanged(env.ALL_MODULES.split(',') as List)
+                    def sonarEnabled = !((env.SKIP_SONAR ?: 'false').toBoolean()) &&
+                        ((env.SONAR_HOST_URL ?: '').trim()) &&
+                        ((env.SONAR_TOKEN ?: '').trim())
+                    return changed && sonarEnabled
+                }
             }
             steps {
-                withSonarQubeEnv("${SONARQUBE_ENV}") {
-                    sh """
-		            mvn compile -DskipTests
+                sh """
+                echo "Running SonarQube analysis against ${env.SONAR_HOST_URL}"
+                mvn compile -DskipTests
 
-                    mvn sonar:sonar \
-                    -Dsonar.projectKey=yas-project \
-                    -Dsonar.branch.name="${env.BRANCH_NAME_SAFE}" \
-                    -Dsonar.coverage.jacoco.xmlReportPaths=**/target/site/jacoco/jacoco.xml \
-                    -DskipTests
-                    """
+                mvn sonar:sonar \
+                -Dsonar.projectKey=yas-project \
+                -Dsonar.branch.name="${env.BRANCH_NAME_SAFE}" \
+                -Dsonar.coverage.jacoco.xmlReportPaths=**/target/site/jacoco/jacoco.xml \
+                -Dsonar.host.url="${env.SONAR_HOST_URL}" \
+                -Dsonar.token="${env.SONAR_TOKEN}" \
+                -DskipTests
+                """
+            }
+        }
+
+        stage('SonarQube Analysis Skipped') {
+            when {
+                expression {
+                    def changed = anyModuleChanged(env.ALL_MODULES.split(',') as List)
+                    def sonarSkipped = ((env.SKIP_SONAR ?: 'false').toBoolean()) ||
+                        !((env.SONAR_HOST_URL ?: '').trim()) ||
+                        !((env.SONAR_TOKEN ?: '').trim())
+                    return changed && sonarSkipped
                 }
+            }
+            steps {
+                echo 'SonarQube skipped because SONAR_HOST_URL/SONAR_TOKEN are not configured.'
             }
         }
 
@@ -205,7 +227,13 @@ pipeline {
         // ========================
         stage('Quality Gate') {
             when {
-                expression { anyModuleChanged(env.ALL_MODULES.split(',') as List) }
+                expression {
+                    def changed = anyModuleChanged(env.ALL_MODULES.split(',') as List)
+                    def sonarEnabled = !((env.SKIP_SONAR ?: 'false').toBoolean()) &&
+                        ((env.SONAR_HOST_URL ?: '').trim()) &&
+                        ((env.SONAR_TOKEN ?: '').trim())
+                    return changed && sonarEnabled
+                }
             }
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
