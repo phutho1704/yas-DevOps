@@ -9,6 +9,19 @@ def normalizeBranchName(String branchName) {
         .trim()
 }
 
+// Returns true if any changed file path starts with the given module prefix.
+// Relies on env.CHANGED_FILES computed in the Checkout stage via `git diff`
+// instead of Jenkins' built-in changeset/changelog (which can be empty when
+// using a custom `checkout([$class: 'GitSCM', ...])` step).
+def moduleChanged(String moduleName) {
+    def changed = (env.CHANGED_FILES ?: '').split('\n')
+    return changed.any { it.trim().startsWith("${moduleName}/") }
+}
+
+def anyModuleChanged(List<String> modules) {
+    return modules.any { moduleChanged(it) }
+}
+
 pipeline {
     agent any
 
@@ -20,6 +33,7 @@ pipeline {
     environment {
         SONARQUBE_ENV = 'SonarQubeServer'
         TESTCONTAINERS_RYUK_DISABLED = 'true'
+        ALL_MODULES = 'product,media,cart,order,inventory,payment,tax,rating,location'
     }
 
     stages {
@@ -42,6 +56,35 @@ pipeline {
                         userRemoteConfigs: scm.userRemoteConfigs,
                         extensions: [[$class: 'CloneOption', depth: 0]]
                     ])
+
+                    // --- Compute changed files ourselves (do NOT rely on changeset/changelog) ---
+                    // Prefer diffing against the previous successful build's commit on this branch;
+                    // fall back to HEAD~1 for the very first build, or to "everything changed"
+                    // if neither works (e.g. shallow history / first commit).
+                    sh 'git fetch --tags --force || true'
+
+                    def previousCommit = env.GIT_PREVIOUS_SUCCESSFUL_COMMIT
+                    def diffTarget = previousCommit ? previousCommit : 'HEAD~1'
+
+                    def changedFiles = sh(
+                        script: """
+                            if git rev-parse --verify ${diffTarget} >/dev/null 2>&1; then
+                                git diff --name-only ${diffTarget} HEAD
+                            else
+                                echo "__FULL_BUILD__"
+                            fi
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    if (changedFiles == '__FULL_BUILD__' || changedFiles == '') {
+                        echo "No previous commit reference found; treating all modules as changed."
+                        env.CHANGED_FILES = env.ALL_MODULES.split(',').collect { "${it}/CHANGED" }.join('\n')
+                    } else {
+                        env.CHANGED_FILES = changedFiles
+                    }
+
+                    echo "Changed files:\n${env.CHANGED_FILES}"
                 }
             }
         }
@@ -77,47 +120,47 @@ pipeline {
             parallel {
 
                 stage('Product') {
-                    when { changeset "product/**" }
+                    when { expression { moduleChanged('product') } }
                     steps { processModule("product") }
                 }
 
                 stage('Media') {
-                    when { changeset "media/**" }
+                    when { expression { moduleChanged('media') } }
                     steps { processModule("media") }
                 }
 
                 stage('Cart') {
-                    when { changeset "cart/**" }
+                    when { expression { moduleChanged('cart') } }
                     steps { processModule("cart") }
                 }
 
                 stage('Order') {
-                    when { changeset "order/**" }
+                    when { expression { moduleChanged('order') } }
                     steps { processModule("order") }
                 }
 
                 stage('Inventory') {
-                    when { changeset "inventory/**" }
+                    when { expression { moduleChanged('inventory') } }
                     steps { processModule("inventory") }
                 }
 
                 stage('Payment') {
-                    when { changeset "payment/**" }
+                    when { expression { moduleChanged('payment') } }
                     steps { processModule("payment") }
                 }
 
                 stage('Tax') {
-                    when { changeset "tax/**" }
+                    when { expression { moduleChanged('tax') } }
                     steps { processModule("tax") }
                 }
 
                 stage('Rating') {
-                    when { changeset "rating/**" }
+                    when { expression { moduleChanged('rating') } }
                     steps { processModule("rating") }
                 }
 
                 stage('Location') {
-                    when { changeset "location/**" }
+                    when { expression { moduleChanged('location') } }
                     steps { processModule("location") }
                 }
             }
@@ -128,19 +171,7 @@ pipeline {
         // ========================
         stage('No Changes Fallback') {
             when {
-                not {
-                    anyOf {
-                        changeset "product/**"
-                        changeset "media/**"
-                        changeset "cart/**"
-                        changeset "order/**"
-                        changeset "inventory/**"
-                        changeset "payment/**"
-                        changeset "tax/**"
-                        changeset "rating/**"
-                        changeset "location/**"
-                    }
-                }
+                expression { !anyModuleChanged(env.ALL_MODULES.split(',') as List) }
             }
             steps {
                 echo "No module changes detected → skipping build/test."
@@ -152,17 +183,7 @@ pipeline {
         // ========================
         stage('SonarQube Analysis') {
             when {
-                anyOf {
-                    changeset "product/**"
-                    changeset "media/**"
-                    changeset "cart/**"
-                    changeset "order/**"
-                    changeset "inventory/**"
-                    changeset "payment/**"
-                    changeset "tax/**"
-                    changeset "rating/**"
-                    changeset "location/**"
-                }
+                expression { anyModuleChanged(env.ALL_MODULES.split(',') as List) }
             }
             steps {
                 withSonarQubeEnv("${SONARQUBE_ENV}") {
@@ -184,17 +205,7 @@ pipeline {
         // ========================
         stage('Quality Gate') {
             when {
-                anyOf {
-                    changeset "product/**"
-                    changeset "media/**"
-                    changeset "cart/**"
-                    changeset "order/**"
-                    changeset "inventory/**"
-                    changeset "payment/**"
-                    changeset "tax/**"
-                    changeset "rating/**"
-                    changeset "location/**"
-                }
+                expression { anyModuleChanged(env.ALL_MODULES.split(',') as List) }
             }
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
