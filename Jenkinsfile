@@ -1,3 +1,16 @@
+def sanitizeBranchName(String branchName) {
+    if (!branchName) {
+        return 'local'
+    }
+
+    return branchName
+        .replaceFirst(/^refs\/heads\//, '')
+        .replaceFirst(/^origin\//, '')
+        .trim()
+        .replaceAll(/[^A-Za-z0-9._-]/, '-')
+        .toLowerCase()
+}
+
 pipeline {
     agent any
 
@@ -18,12 +31,21 @@ pipeline {
         // ========================
         stage('Checkout') {
             steps {
-                checkout([
-                    $class: 'GitSCM',
-                    branches: scm.branches,
-                    userRemoteConfigs: scm.userRemoteConfigs,
-                    extensions: [[$class: 'CloneOption', depth: 0]]
-                ])
+                script {
+                    def rawBranchName = env.CHANGE_BRANCH ?: env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'main'
+                    def branchName = rawBranchName.replaceFirst(/^refs\/heads\//, '').replaceFirst(/^origin\//, '')
+                    def safeBranchName = sanitizeBranchName(branchName)
+
+                    env.BRANCH_NAME_SAFE = safeBranchName
+                    echo "Checking out branch: ${branchName}"
+
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: "*/${branchName}"]],
+                        userRemoteConfigs: scm.userRemoteConfigs,
+                        extensions: [[$class: 'CloneOption', depth: 0]]
+                    ])
+                }
             }
         }
 
@@ -152,6 +174,7 @@ pipeline {
 
                     mvn sonar:sonar \
                     -Dsonar.projectKey=yas-project \
+                    -Dsonar.branch.name=${env.BRANCH_NAME_SAFE} \
                     -Dsonar.coverage.jacoco.xmlReportPaths=**/target/site/jacoco/jacoco.xml \
                     -DskipTests
                     """
